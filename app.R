@@ -28,6 +28,10 @@ message("Using report template: ", normalizePath(report_template_file, mustWork 
 # =========================
 # HELPERS
 # =========================
+`%||%` <- function(x, y) {
+  if (is.null(x) || length(x) == 0 || is.na(x)) y else x
+}
+
 clean_text <- function(x) {
   x %>%
     as.character() %>%
@@ -216,75 +220,73 @@ save_report_map_png <- function(poly,
                                 heat_data = NULL,
                                 heat_settings = NULL,
                                 heat_gradient = NULL) {
-  tmp_html <- tempfile(fileext = ".html")
-  bb <- st_bbox(poly)
+  png(filename = file, width = 1200, height = 850, res = 120)
+  op <- par(no.readonly = TRUE)
+  on.exit({
+    par(op)
+    dev.off()
+  }, add = TRUE)
   
-  map_widget <- leaflet(options = leafletOptions(preferCanvas = TRUE)) %>%
-    addProviderTiles(leaflet::providers$CartoDB.Positron) %>%
-    addPolygons(
-      data = poly,
-      color = "#22422a",
-      weight = 2,
-      fillColor = "#2A5235",
-      fillOpacity = 0.25,
-      popup = NULL
-    )
+  par(mar = c(0, 0, 0, 0), xaxs = "i", yaxs = "i", bg = "white")
+  
+  poly_4326 <- st_transform(poly, 4326)
+  bb <- st_bbox(poly_4326)
+  
+  plot(
+    st_geometry(poly_4326),
+    col = grDevices::adjustcolor("#2A5235", alpha.f = 0.25),
+    border = "#22422a",
+    lwd = 2,
+    axes = FALSE,
+    xlim = c(bb["xmin"], bb["xmax"]),
+    ylim = c(bb["ymin"], bb["ymax"])
+  )
   
   if (identical(map_type, "points")) {
     if (!is.null(point_data) && nrow(point_data) > 0) {
-      map_widget <- map_widget %>%
-        addCircleMarkers(
-          data = point_data,
-          lng = ~LONGITUDE,
-          lat = ~LATITUDE,
-          radius = 4,
-          stroke = FALSE,
-          fillColor = "#F36C21",
-          fillOpacity = 0.7,
-          popup = NULL
-        )
+      points(
+        x = point_data$LONGITUDE,
+        y = point_data$LATITUDE,
+        pch = 16,
+        cex = 0.8,
+        col = grDevices::adjustcolor("#F36C21", alpha.f = 0.7)
+      )
     }
   } else if (identical(map_type, "heat")) {
-    if (!is.null(heat_data) &&
-        nrow(heat_data) > 0 &&
-        !is.null(heat_settings) &&
-        !is.null(heat_gradient)) {
-      map_widget <- map_widget %>%
-        addHeatmap(
-          data = heat_data,
-          lng = ~LONGITUDE,
-          lat = ~LATITUDE,
-          intensity = ~heat_intensity,
-          blur = heat_settings$blur,
-          max = heat_settings$max,
-          radius = heat_settings$radius,
-          minOpacity = heat_settings$min_opacity,
-          gradient = heat_gradient
+    if (!is.null(heat_data) && nrow(heat_data) > 0) {
+      df <- heat_data %>%
+        filter(!is.na(LONGITUDE), !is.na(LATITUDE))
+      
+      if (nrow(df) > 0) {
+        intensity <- df$heat_intensity %||% rep(1, nrow(df))
+        intensity[is.na(intensity)] <- 1
+        
+        ncols <- 100
+        pal <- grDevices::colorRampPalette(unname(heat_gradient))(ncols)
+        idx <- ceiling((intensity / max(intensity, na.rm = TRUE)) * (ncols - 1)) + 1
+        idx[idx < 1] <- 1
+        idx[idx > ncols] <- ncols
+        
+        points(
+          x = df$LONGITUDE,
+          y = df$LATITUDE,
+          pch = 16,
+          cex = 1.8,
+          col = grDevices::adjustcolor(pal[idx], alpha.f = 0.28)
         )
+        
+        points(
+          x = df$LONGITUDE,
+          y = df$LATITUDE,
+          pch = 16,
+          cex = 1.1,
+          col = grDevices::adjustcolor(pal[idx], alpha.f = 0.45)
+        )
+      }
     }
   }
   
-  map_widget <- map_widget %>%
-    fitBounds(
-      lng1 = unname(bb["xmin"]),
-      lat1 = unname(bb["ymin"]),
-      lng2 = unname(bb["xmax"]),
-      lat2 = unname(bb["ymax"])
-    )
-  
-  htmlwidgets::saveWidget(
-    widget = map_widget,
-    file = tmp_html,
-    selfcontained = TRUE
-  )
-  
-  webshot2::webshot(
-    url = tmp_html,
-    file = file,
-    vwidth = 1200,
-    vheight = 850,
-    zoom = 2
-  )
+  box(col = "black", lwd = 1)
 }
 
 sanitize_filename <- function(x) {
@@ -1245,17 +1247,27 @@ server <- function(input, output, session) {
     )
   })
   
-  output$annual_plot <- renderPlot({
-    if (is.null(input$site) || input$site == "") {
-      plot.new()
-      return()
-    }
-    
-    df <- annual_counts()
-    op <- par(no.readonly = TRUE)
-    on.exit(par(op))
-    draw_annual_plot(df)
-  })
+  output$annual_plot <- renderPlot(
+    {
+      if (is.null(input$site) || input$site == "") {
+        plot.new()
+        return()
+      }
+      
+      df <- annual_counts()
+      op <- par(no.readonly = TRUE)
+      on.exit(par(op))
+      draw_annual_plot(df)
+    },
+    width = function() {
+      w <- session$clientData$output_annual_plot_width %||% 800
+      if (is.na(w) || w < 100) 800 else w
+    },
+    height = function() {
+      250
+    },
+    res = 96
+  )
   
   output$download_report <- downloadHandler(
     filename = function() {
@@ -1420,7 +1432,7 @@ server <- function(input, output, session) {
         }
       }
       
-      rendered_file <- tryCatch(
+      tryCatch(
         {
           rmarkdown::render(
             input = template_path,
