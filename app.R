@@ -1304,20 +1304,13 @@ server <- function(input, output, session) {
       tmp_dir <- tempfile("reportdir_")
       dir.create(tmp_dir, recursive = TRUE, showWarnings = FALSE)
       
-      report_rmd <- file.path(tmp_dir, "report_template.Rmd")
       map_png <- file.path(tmp_dir, "report_map.png")
       annual_png <- file.path(tmp_dir, "annual_plot.png")
-      report_pdf_name <- "report_output.pdf"
-      report_pdf <- file.path(tmp_dir, report_pdf_name)
-      
-      copied_rmd <- file.copy(report_template_file, report_rmd, overwrite = TRUE)
-      if (!copied_rmd || !file.exists(report_rmd)) {
-        stop("Failed to copy report template into temp directory.")
-      }
       
       site_name_val <- current_site_name()
       selected_year_val <- input$selected_year
-      selected_species_val <- if (is.null(input$selected_species)) "" else input$selected_species
+      selected_species_val <- if (is.null(input$selected_species) ||
+                                  input$selected_species == "__none__") "" else input$selected_species
       checklist_total_val <- annual_checklist_total()
       species_summary_val <- species_summary()
       annual_counts_val <- annual_counts()
@@ -1412,14 +1405,27 @@ server <- function(input, output, session) {
         stop("Annual plot image was not created.")
       }
       
+      app_dir <- normalizePath(getwd(), mustWork = TRUE)
+      template_path <- normalizePath(report_template_file, mustWork = TRUE)
+      
+      supporting_files <- c(
+        "title-spacing.tex",
+        "header.tex"
+      )
+      
+      for (sf in supporting_files) {
+        src <- file.path(app_dir, sf)
+        if (file.exists(src)) {
+          file.copy(src, file.path(tmp_dir, sf), overwrite = TRUE)
+        }
+      }
+      
       rendered_file <- tryCatch(
         {
           rmarkdown::render(
-            input = report_rmd,
-            output_format = "pdf_document",
-            output_file = report_pdf_name,
-            output_dir = tmp_dir,
-            intermediates_dir = tmp_dir,
+            input = template_path,
+            output_format = rmarkdown::pdf_document(latex_engine = "xelatex"),
+            output_file = normalizePath(file, mustWork = FALSE),
             params = list(
               site_name = site_name_val,
               selected_year = selected_year_val,
@@ -1433,6 +1439,8 @@ server <- function(input, output, session) {
               heat_metric = if (is.null(input$heat_metric)) "" else input$heat_metric
             ),
             envir = new.env(parent = globalenv()),
+            intermediates_dir = tmp_dir,
+            knit_root_dir = app_dir,
             clean = TRUE,
             quiet = FALSE
           )
@@ -1442,27 +1450,15 @@ server <- function(input, output, session) {
         }
       )
       
-      if (is.null(rendered_file) || !file.exists(rendered_file)) {
-        if (file.exists(report_pdf)) {
-          rendered_file <- report_pdf
-        } else {
-          stop("PDF was not created.")
-        }
+      final_pdf <- normalizePath(file, mustWork = FALSE)
+      
+      if (!file.exists(final_pdf)) {
+        stop("PDF was not created.")
       }
       
-      pdf_info <- file.info(rendered_file)
+      pdf_info <- file.info(final_pdf)
       if (is.na(pdf_info$size) || pdf_info$size <= 0) {
-        stop("PDF was created but is empty.")
-      }
-      
-      copied_pdf <- file.copy(rendered_file, file, overwrite = TRUE)
-      if (!copied_pdf || !file.exists(file)) {
-        stop("Failed to copy finished PDF to download location.")
-      }
-      
-      out_info <- file.info(file)
-      if (is.na(out_info$size) || out_info$size <= 0) {
-        stop("Downloaded file was created but is empty.")
+        stop("Downloaded PDF was created but is empty.")
       }
     }
   )
