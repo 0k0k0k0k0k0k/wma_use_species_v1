@@ -1288,6 +1288,8 @@ server <- function(input, output, session) {
       paste0(site_part, "_", year_part, "_", species_part, "_", map_part, "_report.pdf")
     },
     
+    contentType = "application/pdf",
+    
     content = function(file) {
       req(input$site)
       req(input$site != "")
@@ -1299,13 +1301,19 @@ server <- function(input, output, session) {
         stop("Could not find report template: ", normalizePath(report_template_file, mustWork = FALSE))
       }
       
-      tmp_dir <- tempdir()
+      tmp_dir <- tempfile("reportdir_")
+      dir.create(tmp_dir, recursive = TRUE, showWarnings = FALSE)
+      
       report_rmd <- file.path(tmp_dir, "report_template.Rmd")
-      report_pdf <- file.path(tmp_dir, "report_output.pdf")
       map_png <- file.path(tmp_dir, "report_map.png")
       annual_png <- file.path(tmp_dir, "annual_plot.png")
+      report_pdf_name <- "report_output.pdf"
+      report_pdf <- file.path(tmp_dir, report_pdf_name)
       
-      file.copy(report_template_file, report_rmd, overwrite = TRUE)
+      copied_rmd <- file.copy(report_template_file, report_rmd, overwrite = TRUE)
+      if (!copied_rmd || !file.exists(report_rmd)) {
+        stop("Failed to copy report template into temp directory.")
+      }
       
       site_name_val <- current_site_name()
       selected_year_val <- input$selected_year
@@ -1367,46 +1375,95 @@ server <- function(input, output, session) {
         }
       }
       
-      save_report_map_png(
-        poly = poly_val,
-        file = map_png,
-        map_type = report_map_type,
-        point_data = report_point_data,
-        heat_data = report_heat_data,
-        heat_settings = report_heat_settings,
-        heat_gradient = common_heat_gradient
+      tryCatch(
+        {
+          save_report_map_png(
+            poly = poly_val,
+            file = map_png,
+            map_type = report_map_type,
+            point_data = report_point_data,
+            heat_data = report_heat_data,
+            heat_settings = report_heat_settings,
+            heat_gradient = common_heat_gradient
+          )
+        },
+        error = function(e) {
+          stop("Failed to create report map image: ", e$message)
+        }
       )
       
-      save_annual_plot_png(
-        df = annual_counts_val,
-        file = annual_png
-      )
-      
-      rendered_file <- rmarkdown::render(
-        input = report_rmd,
-        output_format = "pdf_document",
-        output_file = report_pdf,
-        params = list(
-          site_name = site_name_val,
-          selected_year = selected_year_val,
-          selected_species = selected_species_val,
-          checklist_total = checklist_total_val,
-          species_individuals = species_summary_val$individuals,
-          species_checklists = species_summary_val$checklists,
-          annual_plot_path = annual_png,
-          map_path = map_png,
-          report_date = report_date_val,
-          heat_metric = if (is.null(input$heat_metric)) "" else input$heat_metric
-        ),
-        envir = new.env(parent = globalenv()),
-        quiet = TRUE
-      )
-      
-      if (!file.exists(rendered_file)) {
-        stop("PDF was not created.")
+      if (!file.exists(map_png) || is.na(file.info(map_png)$size) || file.info(map_png)$size <= 0) {
+        stop("Report map image was not created.")
       }
       
-      file.copy(rendered_file, file, overwrite = TRUE)
+      tryCatch(
+        {
+          save_annual_plot_png(
+            df = annual_counts_val,
+            file = annual_png
+          )
+        },
+        error = function(e) {
+          stop("Failed to create annual plot image: ", e$message)
+        }
+      )
+      
+      if (!file.exists(annual_png) || is.na(file.info(annual_png)$size) || file.info(annual_png)$size <= 0) {
+        stop("Annual plot image was not created.")
+      }
+      
+      rendered_file <- tryCatch(
+        {
+          rmarkdown::render(
+            input = report_rmd,
+            output_format = "pdf_document",
+            output_file = report_pdf_name,
+            output_dir = tmp_dir,
+            intermediates_dir = tmp_dir,
+            params = list(
+              site_name = site_name_val,
+              selected_year = selected_year_val,
+              selected_species = selected_species_val,
+              checklist_total = checklist_total_val,
+              species_individuals = species_summary_val$individuals,
+              species_checklists = species_summary_val$checklists,
+              annual_plot_path = annual_png,
+              map_path = map_png,
+              report_date = report_date_val,
+              heat_metric = if (is.null(input$heat_metric)) "" else input$heat_metric
+            ),
+            envir = new.env(parent = globalenv()),
+            clean = TRUE,
+            quiet = FALSE
+          )
+        },
+        error = function(e) {
+          stop("PDF render failed: ", e$message)
+        }
+      )
+      
+      if (is.null(rendered_file) || !file.exists(rendered_file)) {
+        if (file.exists(report_pdf)) {
+          rendered_file <- report_pdf
+        } else {
+          stop("PDF was not created.")
+        }
+      }
+      
+      pdf_info <- file.info(rendered_file)
+      if (is.na(pdf_info$size) || pdf_info$size <= 0) {
+        stop("PDF was created but is empty.")
+      }
+      
+      copied_pdf <- file.copy(rendered_file, file, overwrite = TRUE)
+      if (!copied_pdf || !file.exists(file)) {
+        stop("Failed to copy finished PDF to download location.")
+      }
+      
+      out_info <- file.info(file)
+      if (is.na(out_info$size) || out_info$size <= 0) {
+        stop("Downloaded file was created but is empty.")
+      }
     }
   )
   

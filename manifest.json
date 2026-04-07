@@ -2673,7 +2673,7 @@
   },
   "files": {
     "app.R": {
-      "checksum": "808d25a122d46400bfecea4a1d9c45a8"
+      "checksum": "37c8610bba22cbd6a1f1e0502f039ae5"
     },
     "data_processed/caches/amelia_checklists_cache.rds": {
       "checksum": "947a7efdac6e4512207157865a0a9db6"
@@ -2917,6 +2917,18 @@
     },
     "data_processed/caches/wytheville_trout_checklists_cache.rds": {
       "checksum": "cf99d0927d7aa42ba6f5bac59aa8ad54"
+    },
+    "data_processed/summaries/all_wma_species_summary.csv": {
+      "checksum": "bc6dbc8e8afe37b8c25b3364e5d5ff55"
+    },
+    "data_processed/summaries/all_wma_species_summary.rds": {
+      "checksum": "08d8d15ec7dcd0f74b26cff976fc2a3a"
+    },
+    "data_processed/summaries/hog_island_species_summary_TEST.csv": {
+      "checksum": "c21be595d77b17241bb4b4c5530765a7"
+    },
+    "data_processed/summaries/hog_island_species_summary_TEST.rds": {
+      "checksum": "1e80039a37252ec5187befbe651d85fa"
     },
     "data_raw/shapefiles/DWR_WMA_Boundaries/DWR_WMA_Boundaries.cpg": {
       "checksum": "ae3b3df9970b49b6523e608759bc957d"
