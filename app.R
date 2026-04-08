@@ -1374,16 +1374,6 @@ server <- function(input, output, session) {
         }
       }
       
-      save_report_map_png(
-        poly = poly_val,
-        file = map_png,
-        map_type = report_map_type,
-        point_data = report_point_data,
-        heat_data = report_heat_data,
-        heat_settings = report_heat_settings,
-        heat_gradient = common_heat_gradient
-      )
-      
       save_annual_plot_png(
         df = annual_counts_val,
         file = annual_png
@@ -1400,7 +1390,7 @@ server <- function(input, output, session) {
           species_individuals = species_summary_val$individuals,
           species_checklists = species_summary_val$checklists,
           annual_plot_path = annual_png,
-          map_path = map_png,
+          map_path = "",
           report_date = report_date_val,
           heat_metric = if (is.null(input$heat_metric)) "" else input$heat_metric
         ),
