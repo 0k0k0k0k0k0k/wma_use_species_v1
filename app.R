@@ -579,7 +579,7 @@ ui <- fluidPage(
       tags$div(style = "margin-top:5px;"),
       
       tags$div(style = "margin-top:20px;"),
-      downloadButton("download_report", "Download Report")
+      # downloadButton("download_report", "Download Report")
     ),
     
     mainPanel(
