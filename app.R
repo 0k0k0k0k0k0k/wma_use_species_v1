@@ -1,5 +1,4 @@
 # WMA SPECIES v1.5 TESTING
-Sys.setenv(CHROMOTE_CHROME_ARGS = "--no-sandbox")
 
 library(shiny)
 library(leaflet)
@@ -104,135 +103,14 @@ sgcn_species <- c(
 # =========================
 # PATHS
 # =========================
-dwr_shp_file <- "data_raw/shapefiles/DWR_WMA_Boundaries/DWR_WMA_Boundaries.shp"
-cache_dir    <- "data_processed/caches"
+app_data_file <- "data_processed/app_ready_data.rds"
 
 message("Working directory: ", getwd())
-message("Using DWR shapefile: ", normalizePath(dwr_shp_file, mustWork = FALSE))
-message("Using cache directory: ", normalizePath(cache_dir, mustWork = FALSE))
+message("Using prebuilt app data: ", normalizePath(app_data_file, mustWork = FALSE))
 
 # =========================
 # HELPERS
 # =========================
-clean_text <- function(x) {
-  x %>%
-    as.character() %>%
-    str_to_lower() %>%
-    str_replace_all("wildlife management area", "wma") %>%
-    str_replace_all("[^a-z0-9]+", " ") %>%
-    str_squish()
-}
-
-make_site_key <- function(x) {
-  x %>%
-    as.character() %>%
-    str_to_lower() %>%
-    str_replace_all("wildlife management area", "") %>%
-    str_replace_all("\\bwma\\b", "") %>%
-    str_replace_all("[^a-z0-9]+", "_") %>%
-    str_replace_all("^_+|_+$", "") %>%
-    str_replace_all("_+", "_")
-}
-
-make_site_name_from_key <- function(site_key) {
-  paste0(
-    site_key %>%
-      str_replace_all("_", " ") %>%
-      str_squish() %>%
-      str_to_title(),
-    " WMA"
-  )
-}
-
-read_cache_file <- function(site_name, path) {
-  if (is.na(path) || !file.exists(path)) {
-    stop("Cache file not found for ", site_name, ": ", path)
-  }
-  
-  df <- readRDS(path)
-  
-  needed_cols <- c(
-    "SAMPLING EVENT IDENTIFIER",
-    "OBSERVATION DATE",
-    "LATITUDE",
-    "LONGITUDE",
-    "COMMON NAME",
-    "OBSERVATION COUNT"
-  )
-  missing_cols <- setdiff(needed_cols, names(df))
-  
-  if (length(missing_cols) > 0) {
-    stop(
-      "Cache file for ", site_name, " is missing required columns: ",
-      paste(missing_cols, collapse = ", ")
-    )
-  }
-  
-  if (!"GROUP IDENTIFIER" %in% names(df)) {
-    df$`GROUP IDENTIFIER` <- NA_character_
-  }
-  
-  df %>%
-    mutate(
-      `OBSERVATION DATE` = as.Date(`OBSERVATION DATE`),
-      checklist_group_id = if_else(
-        !is.na(`GROUP IDENTIFIER`) & str_trim(`GROUP IDENTIFIER`) != "",
-        as.character(`GROUP IDENTIFIER`),
-        as.character(`SAMPLING EVENT IDENTIFIER`)
-      )
-    ) %>%
-    filter(!is.na(`OBSERVATION DATE`), `OBSERVATION DATE` >= as.Date("2002-01-01"))
-}
-
-find_name_column <- function(wmas) {
-  candidates <- c("WMA_NAME", "MANAME", "LABEL", "NAME", "AREA_NAME", "UNIT_NAME")
-  hits <- candidates[candidates %in% names(wmas)]
-  
-  if (length(hits) == 0) {
-    stop(
-      "Could not find a likely WMA name column in shapefile.\n",
-      "Available columns are:\n",
-      paste(names(wmas), collapse = ", ")
-    )
-  }
-  
-  hits[1]
-}
-
-match_wma_features <- function(wmas, site_key) {
-  name_col <- find_name_column(wmas)
-  
-  wmas2 <- wmas %>%
-    mutate(
-      wma_name_raw = as.character(.data[[name_col]]),
-      site_key_tmp = make_site_key(wma_name_raw)
-    )
-  
-  hit <- wmas2 %>%
-    filter(site_key_tmp == site_key)
-  
-  if (nrow(hit) == 0) {
-    stop("Could not find polygon in shapefile for site_key = ", site_key)
-  }
-  
-  hit
-}
-
-match_wma_polygon <- function(wmas, site_key, site_name) {
-  hit <- match_wma_features(wmas, site_key)
-  
-  geom <- hit %>%
-    st_make_valid() %>%
-    st_union()
-  
-  st_sf(
-    site_key = site_key,
-    site_name = site_name,
-    geometry = st_sfc(geom, crs = st_crs(hit))
-  ) %>%
-    st_transform(4326)
-}
-
 first_non_missing <- function(x) {
   x <- as.character(x)
   x <- x[!is.na(x) & str_trim(x) != ""]
@@ -296,156 +174,29 @@ common_heat_gradient <- c(
 )
 
 # =========================
-# FIND CACHE FILES
+# LOAD PREBUILT APP DATA
 # =========================
-if (!dir.exists(cache_dir)) {
-  stop("Cache directory not found: ", normalizePath(cache_dir, mustWork = FALSE))
-}
-
-cache_files <- list.files(
-  cache_dir,
-  pattern = "_checklists_cache\\.rds$",
-  full.names = TRUE
-)
-
-if (length(cache_files) == 0) {
-  stop("No cache files found in: ", normalizePath(cache_dir, mustWork = FALSE))
-}
-
-site_keys <- make_site_key(str_remove(basename(cache_files), "_checklists_cache\\.rds$"))
-
-site_lookup_raw <- tibble(
-  cache_file = cache_files,
-  cache_file_name = basename(cache_files),
-  site_key_raw = str_remove(cache_file_name, "_checklists_cache\\.rds$"),
-  site_key = site_keys,
-  site_name = make_site_name_from_key(site_keys)
-)
-
-site_lookup <- site_lookup_raw %>%
-  mutate(
-    is_preferred = !str_detect(site_key_raw, "_wma$")
-  ) %>%
-  arrange(desc(is_preferred), cache_file_name) %>%
-  distinct(site_key, .keep_all = TRUE) %>%
-  select(cache_file, cache_file_name, site_key, site_name) %>%
-  arrange(site_name)
-
-message("Found cache files after de-duplication:")
-print(site_lookup %>% select(site_name, cache_file))
-
-# =========================
-# READ ALL CACHES
-# =========================
-cache_list <- list()
-
-for (i in seq_len(nrow(site_lookup))) {
-  sk <- site_lookup$site_key[i]
-  sn <- site_lookup$site_name[i]
-  cf <- site_lookup$cache_file[i]
-  
-  message("Reading cache for ", sn, ": ", cf)
-  
-  this_cache <- tryCatch(
-    read_cache_file(sn, cf),
-    error = function(e) {
-      message("Skipping bad cache for ", sn, ": ", e$message)
-      NULL
-    }
+if (!file.exists(app_data_file)) {
+  stop(
+    "Prebuilt app data file not found: ",
+    normalizePath(app_data_file, mustWork = FALSE),
+    "\nRun scripts/build_app_data.R first."
   )
-  
-  if (is.null(this_cache)) next
-  
-  cache_list[[sk]] <- this_cache
 }
 
-site_lookup <- site_lookup %>%
-  filter(site_key %in% names(cache_list)) %>%
-  arrange(site_name)
+app_data <- readRDS(app_data_file)
 
-if (length(cache_list) == 0) {
-  stop("No usable cache files were loaded.")
-}
-
-nonempty_cache_keys <- names(cache_list)[vapply(cache_list, nrow, integer(1)) > 0]
-
-if (length(nonempty_cache_keys) > 0) {
-  global_min_date <- max(
-    as.Date("2002-01-01"),
-    min(
-      unlist(lapply(cache_list[nonempty_cache_keys], function(x) x$`OBSERVATION DATE`)),
-      na.rm = TRUE
-    )
-  )
-  
-  global_max_date <- max(
-    unlist(lapply(cache_list[nonempty_cache_keys], function(x) x$`OBSERVATION DATE`)),
-    na.rm = TRUE
-  )
-} else {
-  global_min_date <- as.Date("2002-01-01")
-  global_max_date <- Sys.Date()
-}
-
-global_min_year <- as.integer(strftime(as.Date(global_min_date), "%Y"))
-global_max_year <- max(
-  as.integer(strftime(as.Date(global_max_date), "%Y")),
-  as.integer(format(Sys.Date(), "%Y"))
-)
-global_year_choices <- as.character(seq(2002, global_max_year, by = 1))
-
-# =========================
-# READ SHAPEFILE
-# =========================
-if (!file.exists(dwr_shp_file)) {
-  stop("DWR shapefile not found: ", normalizePath(dwr_shp_file, mustWork = FALSE))
-}
-
-dwr_wmas <- st_read(dwr_shp_file, quiet = TRUE) %>%
-  st_make_valid()
-
-message("Columns in DWR shapefile:")
-print(names(dwr_wmas))
-
-# =========================
-# BUILD POLYGONS
-# =========================
-polygon_list <- setNames(vector("list", nrow(site_lookup)), site_lookup$site_key)
-
-for (i in seq_len(nrow(site_lookup))) {
-  sk <- site_lookup$site_key[i]
-  sn <- site_lookup$site_name[i]
-  
-  message("Building polygon for ", sn, " (", sk, ")")
-  
-  poly_try <- tryCatch(
-    {
-      match_wma_polygon(
-        wmas = dwr_wmas,
-        site_key = sk,
-        site_name = sn
-      )
-    },
-    error = function(e) {
-      message("Polygon build failed for ", sn, ": ", e$message)
-      NULL
-    }
-  )
-  
-  polygon_list[[sk]] <- poly_try
-}
-
-valid_site_keys <- names(polygon_list)[!vapply(polygon_list, is.null, logical(1))]
-
-site_lookup <- site_lookup %>%
-  filter(site_key %in% valid_site_keys) %>%
-  arrange(site_name)
-
-cache_list <- cache_list[site_lookup$site_key]
-polygon_list <- polygon_list[site_lookup$site_key]
+site_lookup <- app_data$site_lookup
+cache_list <- app_data$cache_list
+polygon_list <- app_data$polygon_list
+all_sites_cache <- app_data$all_sites_cache
+all_polygons <- app_data$all_polygons
+global_min_year <- app_data$global_min_year
+global_max_year <- app_data$global_max_year
+global_year_choices <- app_data$global_year_choices
 
 if (nrow(site_lookup) == 0) {
-  stop("No sites remain after matching caches to polygons.")
+  stop("No sites found in prebuilt app data.")
 }
 
 # =========================
@@ -488,10 +239,12 @@ ui <- fluidPage(
         margin-bottom: 8px;
       }
       .sidebar-panel-compact .shiny-input-radiogroup {
+        margin-top: 12px;
         margin-bottom: 6px;
       }
-      .sidebar-panel-compact .shiny-input-container {
-        margin-bottom: 8px;
+      .sidebar-panel-compact .shiny-input-radiogroup {
+        margin-top: 12px;
+        margin-bottom: 6px;
       }
       "))
   ),
@@ -501,7 +254,7 @@ ui <- fluidPage(
   sidebarLayout(
     sidebarPanel(
       class = "sidebar-panel-compact",
-      style = "height: 760px; overflow-y: auto; padding-top: 10px;",
+      style = "height: 550px; overflow-y: auto; padding-top: 10px;",
       
       tags$h4("Select WMA"),
       
@@ -568,9 +321,9 @@ ui <- fluidPage(
       
       conditionalPanel(
         condition = "input.map_type == 'heat'",
-        tags$h4("Map Based On"),
+        tags$h4("Map Based On", style = "margin-top: 14px;"),
         div(
-          style = "margin-top: 4px;",
+          style = "margin-top: 6px;",
           radioButtons(
             "heat_metric",
             NULL,
@@ -591,7 +344,7 @@ ui <- fluidPage(
           "Map",
           div(
             style = "border: 1px solid black; border-radius: 4px; padding: 2px;",
-            leafletOutput("map", height = "752px")
+            leafletOutput("map", height = "500px")
           )
         ),
         tabPanel(
@@ -626,34 +379,7 @@ server <- function(input, output, session) {
     req(input$site != "")
     
     if (input$site == "__all__") {
-      if (length(cache_list) == 0) {
-        return(tibble(
-          `SAMPLING EVENT IDENTIFIER` = character(),
-          `GROUP IDENTIFIER` = character(),
-          checklist_group_id = character(),
-          `OBSERVATION DATE` = as.Date(character()),
-          LATITUDE = numeric(),
-          LONGITUDE = numeric(),
-          `COMMON NAME` = character(),
-          `OBSERVATION COUNT` = character(),
-          site_key = character(),
-          site_name = character()
-        ))
-      }
-      
-      all_cache <- bind_rows(
-        lapply(seq_along(cache_list), function(i) {
-          sk <- names(cache_list)[i]
-          sn <- site_lookup$site_name[match(sk, site_lookup$site_key)]
-          cache_list[[i]] %>%
-            mutate(
-              site_key = sk,
-              site_name = sn
-            )
-        })
-      )
-      
-      return(all_cache)
+      return(all_sites_cache)
     }
     
     cache_list[[input$site]] %>%
@@ -668,7 +394,7 @@ server <- function(input, output, session) {
     req(input$site != "")
     
     if (input$site == "__all__") {
-      return(do.call(rbind, polygon_list))
+      return(all_polygons)
     }
     
     polygon_list[[input$site]]
@@ -758,8 +484,7 @@ server <- function(input, output, session) {
     }
     
     site_years_num <- site_df %>%
-      filter(!is.na(`OBSERVATION DATE`)) %>%
-      mutate(year = as.integer(strftime(as.Date(`OBSERVATION DATE`), "%Y"))) %>%
+      filter(!is.na(year)) %>%
       pull(year)
     
     if (length(site_years_num) > 0) {
@@ -824,7 +549,6 @@ server <- function(input, output, session) {
     }
     
     df_range <- site_df %>%
-      mutate(year = as.integer(strftime(as.Date(`OBSERVATION DATE`), "%Y"))) %>%
       filter(year >= start_year, year <= end_year)
     
     species_choices <- df_range %>%
@@ -962,7 +686,6 @@ server <- function(input, output, session) {
     }
     
     df %>%
-      mutate(year = as.integer(strftime(as.Date(`OBSERVATION DATE`), "%Y"))) %>%
       filter(year >= start_year, year <= end_year)
   })
   
@@ -1074,7 +797,6 @@ server <- function(input, output, session) {
     
     yearly_counts <- df %>%
       mutate(
-        year = as.integer(strftime(as.Date(`OBSERVATION DATE`), "%Y")),
         sampling_id_chr = as.character(`SAMPLING EVENT IDENTIFIER`)
       ) %>%
       arrange(checklist_group_id, year, sampling_id_chr) %>%
@@ -1169,7 +891,7 @@ server <- function(input, output, session) {
       )
     ) %>%
       addProviderTiles(leaflet::providers$CartoDB.Positron) %>%
-      setView(lng = -79.5, lat = 37.8, zoom = 6.7)
+      setView(lng = -79.5, lat = 37.8, zoom = 6.3)
   })
   
   observe({
@@ -1180,7 +902,7 @@ server <- function(input, output, session) {
         clearMarkerClusters() %>%
         clearPopups() %>%
         clearHeatmap() %>%
-        setView(lng = -79.5, lat = 37.8, zoom = 6.7)
+        setView(lng = -79.5, lat = 37.8, zoom = 6.3)
       return()
     }
     
