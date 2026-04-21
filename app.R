@@ -1,5 +1,4 @@
-# WMA SPECIES v1 TESTING
-# SPECIES v1 FINAL
+# WMA SPECIES v1.5 TESTING
 Sys.setenv(CHROMOTE_CHROME_ARGS = "--no-sandbox")
 
 library(shiny)
@@ -9,23 +8,108 @@ library(sf)
 library(dplyr)
 library(stringr)
 library(tibble)
-library(rmarkdown)
-library(htmlwidgets)
-library(webshot2)
+
+sgcn_species <- c(
+  "American Barn Owl",
+  "American Black Duck",
+  "American Herring Gull",
+  "American Kestrel",
+  "American Oystercatcher",
+  "American Woodcock",
+  "Winter Wren",
+  "Bachman's Sparrow",
+  "Bank Swallow",
+  "Belted Kingfisher",
+  "Bicknell's Thrush",
+  "Black Skimmer",
+  "Black-and-white Warbler",
+  "Black-bellied Plover",
+  "Boat-tailed Grackle",
+  "Bobolink",
+  "Brant",
+  "Canada Warbler",
+  "Cerulean Warbler",
+  "Chimney Swift",
+  "Chuck-will's-widow",
+  "Clapper Rail",
+  "Common Grackle",
+  "Common Nighthawk",
+  "Common Tern",
+  "Dickcissel",
+  "Dunlin",
+  "Eastern Black Rail",
+  "Eastern Kingbird",
+  "Eastern Meadowlark",
+  "Eastern Screech-Owl",
+  "Eastern Towhee",
+  "Eastern Whip-poor-will",
+  "Eastern Wood-Pewee",
+  "Field Sparrow",
+  "Forster's Tern",
+  "Glossy Ibis",
+  "Golden Eagle",
+  "Golden-winged Warbler",
+  "Grasshopper Sparrow",
+  "Gray Catbird",
+  "Green Heron",
+  "Gull-billed Tern",
+  "Henslow's Sparrow",
+  "Hermit Thrush",
+  "Horned Lark",
+  "Hudsonian Whimbrel",
+  "Kentucky Warbler",
+  "King Rail",
+  "Laughing Gull",
+  "Least Flycatcher",
+  "Least Tern",
+  "Little Blue Heron",
+  "Loggerhead Shrike",
+  "Marbled Godwit",
+  "Marsh Wren",
+  "Nelson's Sparrow",
+  "Northern Bobwhite",
+  "Northern Flicker",
+  "Northern Gannet",
+  "Northern Harrier",
+  "Northern Mockingbird",
+  "Northern Rough-winged Swallow",
+  "Peregrine Falcon",
+  "Piping Plover",
+  "Prairie Warbler",
+  "Purple Sandpiper",
+  "Red-cockaded Woodpecker",
+  "Red-throated Loon",
+  "Red-winged Blackbird",
+  "Red Knot",
+  "Ruffed Grouse",
+  "Rusty Blackbird",
+  "Saltmarsh Sparrow",
+  "Sanderling",
+  "Savannah Sparrow",
+  "Savannah Sparrow Ipswich ssp",
+  "Short-billed Dowitcher",
+  "Snowy Egret",
+  "Tricolored Heron",
+  "Veery",
+  "Vesper Sparrow",
+  "Virginia Rail",
+  "Wayne's Warbler (Setophaga virens waynei)",
+  "Western Willet",
+  "Wilson's Plover",
+  "Wood Thrush",
+  "Yellow Warbler",
+  "Yellow-breasted Chat"
+)
 
 # =========================
 # PATHS
 # =========================
 dwr_shp_file <- "data_raw/shapefiles/DWR_WMA_Boundaries/DWR_WMA_Boundaries.shp"
 cache_dir    <- "data_processed/caches"
-output_dir   <- "outputs"
-report_template_file <- "report_template.Rmd"
 
 message("Working directory: ", getwd())
 message("Using DWR shapefile: ", normalizePath(dwr_shp_file, mustWork = FALSE))
 message("Using cache directory: ", normalizePath(cache_dir, mustWork = FALSE))
-message("Using output directory: ", normalizePath(output_dir, mustWork = FALSE))
-message("Using report template: ", normalizePath(report_template_file, mustWork = FALSE))
 
 # =========================
 # HELPERS
@@ -173,7 +257,7 @@ draw_annual_plot <- function(df) {
     return(invisible(NULL))
   }
   
-  par(mar = c(4, 4, 1, 1))
+  par(mar = c(3.5, 4, 1, 1))
   
   plot(
     x = df$year,
@@ -198,103 +282,6 @@ draw_annual_plot <- function(df) {
     cex = 0.8,
     col = "#22422a"
   )
-}
-
-save_annual_plot_png <- function(df, file) {
-  png(filename = file, width = 1200, height = 700, res = 120)
-  op <- par(no.readonly = TRUE)
-  on.exit({
-    par(op)
-    dev.off()
-  }, add = TRUE)
-  
-  draw_annual_plot(df)
-}
-
-save_report_map_png <- function(poly,
-                                file,
-                                map_type = "points",
-                                point_data = NULL,
-                                heat_data = NULL,
-                                heat_settings = NULL,
-                                heat_gradient = NULL) {
-  tmp_html <- tempfile(fileext = ".html")
-  bb <- st_bbox(poly)
-  
-  map_widget <- leaflet(options = leafletOptions(preferCanvas = TRUE)) %>%
-    addProviderTiles(leaflet::providers$CartoDB.Positron) %>%
-    addPolygons(
-      data = poly,
-      color = "#22422a",
-      weight = 2,
-      fillColor = "#2A5235",
-      fillOpacity = 0.25,
-      popup = NULL
-    )
-  
-  if (identical(map_type, "points")) {
-    if (!is.null(point_data) && nrow(point_data) > 0) {
-      map_widget <- map_widget %>%
-        addCircleMarkers(
-          data = point_data,
-          lng = ~LONGITUDE,
-          lat = ~LATITUDE,
-          radius = 4,
-          stroke = FALSE,
-          fillColor = "#F36C21",
-          fillOpacity = 0.7,
-          popup = NULL
-        )
-    }
-  } else if (identical(map_type, "heat")) {
-    if (!is.null(heat_data) &&
-        nrow(heat_data) > 0 &&
-        !is.null(heat_settings) &&
-        !is.null(heat_gradient)) {
-      map_widget <- map_widget %>%
-        addHeatmap(
-          data = heat_data,
-          lng = ~LONGITUDE,
-          lat = ~LATITUDE,
-          intensity = ~heat_intensity,
-          blur = heat_settings$blur,
-          max = heat_settings$max,
-          radius = heat_settings$radius,
-          minOpacity = heat_settings$min_opacity,
-          gradient = heat_gradient
-        )
-    }
-  }
-  
-  map_widget <- map_widget %>%
-    fitBounds(
-      lng1 = unname(bb["xmin"]),
-      lat1 = unname(bb["ymin"]),
-      lng2 = unname(bb["xmax"]),
-      lat2 = unname(bb["ymax"])
-    )
-  
-  htmlwidgets::saveWidget(
-    widget = map_widget,
-    file = tmp_html,
-    selfcontained = TRUE
-  )
-  
-  webshot2::webshot(
-    url = tmp_html,
-    file = file,
-    vwidth = 1200,
-    vheight = 850,
-    zoom = 2
-  )
-}
-
-sanitize_filename <- function(x) {
-  x %>%
-    as.character() %>%
-    str_to_lower() %>%
-    str_replace_all("[^a-z0-9]+", "_") %>%
-    str_replace_all("^_+|_+$", "")
 }
 
 common_heat_gradient <- c(
@@ -485,6 +472,27 @@ ui <- fluidPage(
         font-family: Menlo, Monaco, Consolas, 'Courier New', monospace;
         font-weight: 400;
       }
+      .sidebar-panel-compact .form-group {
+        margin-bottom: 10px;
+      }
+      .sidebar-panel-compact .radio {
+        margin-top: 4px;
+        margin-bottom: 4px;
+      }
+      .sidebar-panel-compact .checkbox {
+        margin-top: 4px;
+        margin-bottom: 8px;
+      }
+      .sidebar-panel-compact h4 {
+        margin-top: 10px;
+        margin-bottom: 8px;
+      }
+      .sidebar-panel-compact .shiny-input-radiogroup {
+        margin-bottom: 6px;
+      }
+      .sidebar-panel-compact .shiny-input-container {
+        margin-bottom: 8px;
+      }
       "))
   ),
   
@@ -492,6 +500,9 @@ ui <- fluidPage(
   
   sidebarLayout(
     sidebarPanel(
+      class = "sidebar-panel-compact",
+      style = "height: 760px; overflow-y: auto; padding-top: 10px;",
+      
       tags$h4("Select WMA"),
       
       selectInput(
@@ -505,30 +516,48 @@ ui <- fluidPage(
         selected = ""
       ),
       
-      tags$div(style = "margin-top:20px;"),
-      
-      tags$h4("Select Year"),
-      selectInput(
-        "selected_year",
-        NULL,
-        choices = c("Select Year" = ""),
-        selected = ""
+      tags$h4("Year Range"),
+      div(
+        style = "display: flex; gap: 2%;",
+        div(
+          style = "width: 49%;",
+          selectInput(
+            "start_year",
+            label = NULL,
+            choices = global_year_choices,
+            selected = as.character(global_min_year),
+            selectize = FALSE,
+            width = "100%"
+          )
+        ),
+        div(
+          style = "width: 49%;",
+          selectInput(
+            "end_year",
+            label = NULL,
+            choices = global_year_choices,
+            selected = as.character(global_min_year),
+            selectize = FALSE,
+            width = "100%"
+          )
+        )
       ),
       
-      verbatimTextOutput("summary_text", placeholder = TRUE),
-      
-      tags$div(style = "margin-top:20px;"),
-      
       tags$h4("Select Species"),
+      
+      checkboxInput(
+        "sgcn_only",
+        "Show Virginia SGCN birds only",
+        value = FALSE
+      ),
+      
       uiOutput("species_ui"),
       
       verbatimTextOutput("species_summary_text", placeholder = TRUE),
       
-      tags$div(style = "margin-top:20px;"),
-      
       tags$h4("Map Style"),
       div(
-        style = "margin-top: 15px;",
+        style = "margin-top: 4px;",
         radioButtons(
           "map_type",
           NULL,
@@ -537,13 +566,11 @@ ui <- fluidPage(
         )
       ),
       
-      tags$div(style = "margin-top:20px;"),
-      
       conditionalPanel(
         condition = "input.map_type == 'heat'",
         tags$h4("Map Based On"),
         div(
-          style = "margin-top: 15px;",
+          style = "margin-top: 4px;",
           radioButtons(
             "heat_metric",
             NULL,
@@ -555,44 +582,25 @@ ui <- fluidPage(
             selected = "species_density"
           )
         )
-      ),
-      
-      tags$div(style = "margin-top:20px;"),
-      
-      tags$h4("View Checklists Over Time"),
-      tags$div(style = "margin-top:8px;"),
-      
-      selectInput(
-        "year_min",
-        "Start year",
-        choices = global_year_choices,
-        selected = as.character(global_min_year)
-      ),
-      
-      selectInput(
-        "year_max",
-        "End year",
-        choices = global_year_choices,
-        selected = as.character(global_min_year)
-      ),
-      
-      tags$div(style = "margin-top:5px;"),
-      
-      tags$div(style = "margin-top:20px;"),
-      # downloadButton("download_report", "Download Report")
+      )
     ),
     
     mainPanel(
-      div(
-        style = "border: 1px solid black; border-radius: 4px; padding: 2px;",
-        leafletOutput("map", height = 650)
-      ),
-      
-      tags$div(style = "margin-top:20px;"),
-      
-      div(
-        style = "border: 1px solid black; border-radius: 4px; padding: 6px; background-color: white;",
-        plotOutput("annual_plot", height = 250)
+      tabsetPanel(
+        tabPanel(
+          "Map",
+          div(
+            style = "border: 1px solid black; border-radius: 4px; padding: 2px;",
+            leafletOutput("map", height = "752px")
+          )
+        ),
+        tabPanel(
+          "Checklists Over Time",
+          div(
+            style = "border: 1px solid black; border-radius: 4px; padding: 6px; background-color: white;",
+            plotOutput("annual_plot", height = 450, width = "100%")
+          )
+        )
       )
     )
   )
@@ -603,14 +611,7 @@ ui <- fluidPage(
 # =========================
 server <- function(input, output, session) {
   
-  last_selected_year <- reactiveVal("")
   last_selected_species <- reactiveVal("")
-  
-  observeEvent(input$selected_year, {
-    if (!is.null(input$selected_year) && input$selected_year != "") {
-      last_selected_year(input$selected_year)
-    }
-  }, ignoreInit = TRUE)
   
   observeEvent(input$selected_species, {
     if (!is.null(input$selected_species) &&
@@ -714,27 +715,19 @@ server <- function(input, output, session) {
   })
   
   observeEvent(input$site, {
-    remembered_year <- last_selected_year()
     current_year <- as.integer(format(Sys.Date(), "%Y"))
     
     if (is.null(input$site) || input$site == "") {
       updateSelectInput(
         session,
-        "selected_year",
-        choices = c("Select Year" = ""),
-        selected = ""
-      )
-      
-      updateSelectInput(
-        session,
-        "year_min",
+        "start_year",
         choices = global_year_choices,
         selected = as.character(global_min_year)
       )
       
       updateSelectInput(
         session,
-        "year_max",
+        "end_year",
         choices = global_year_choices,
         selected = as.character(global_min_year)
       )
@@ -745,89 +738,24 @@ server <- function(input, output, session) {
     site_df <- current_cache()
     
     if (nrow(site_df) == 0) {
-      updateSelectInput(
-        session,
-        "selected_year",
-        choices = c("No data available" = "__none__"),
-        selected = "__none__"
-      )
-      
       site_year_choices <- as.character(seq(2002, current_year, by = 1))
       
       updateSelectInput(
         session,
-        "year_min",
+        "start_year",
         choices = site_year_choices,
         selected = "2002"
       )
       
       updateSelectInput(
         session,
-        "year_max",
+        "end_year",
         choices = site_year_choices,
         selected = "2002"
       )
       
       return()
     }
-    
-    site_year_choices <- site_df %>%
-      filter(!is.na(`OBSERVATION DATE`)) %>%
-      mutate(year = as.integer(strftime(as.Date(`OBSERVATION DATE`), "%Y"))) %>%
-      distinct(year) %>%
-      arrange(desc(year)) %>%
-      pull(year) %>%
-      as.character()
-    
-    if (length(site_year_choices) == 0) {
-      updateSelectInput(
-        session,
-        "selected_year",
-        choices = c("No data available" = "__none__"),
-        selected = "__none__"
-      )
-      
-      site_year_choices_graph <- as.character(seq(2002, current_year, by = 1))
-      
-      updateSelectInput(
-        session,
-        "year_min",
-        choices = site_year_choices_graph,
-        selected = "2002"
-      )
-      
-      updateSelectInput(
-        session,
-        "year_max",
-        choices = site_year_choices_graph,
-        selected = "2002"
-      )
-      
-      return()
-    }
-    
-    year_prompt <- if (!is.null(remembered_year) &&
-                       remembered_year != "" &&
-                       !(remembered_year %in% site_year_choices)) {
-      "No data available"
-    } else {
-      "Select Year"
-    }
-    
-    new_year <- if (!is.null(remembered_year) &&
-                    remembered_year != "" &&
-                    remembered_year %in% site_year_choices) {
-      remembered_year
-    } else {
-      ""
-    }
-    
-    updateSelectInput(
-      session,
-      "selected_year",
-      choices = c(setNames("", year_prompt), site_year_choices),
-      selected = new_year
-    )
     
     site_years_num <- site_df %>%
       filter(!is.na(`OBSERVATION DATE`)) %>%
@@ -842,16 +770,16 @@ server <- function(input, output, session) {
       
       updateSelectInput(
         session,
-        "year_min",
+        "start_year",
         choices = graph_year_choices,
         selected = as.character(min_site_year)
       )
       
       updateSelectInput(
         session,
-        "year_max",
+        "end_year",
         choices = graph_year_choices,
-        selected = as.character(min_site_year)
+        selected = as.character(max_site_year_for_ui)
       )
     }
   }, ignoreInit = FALSE)
@@ -875,29 +803,8 @@ server <- function(input, output, session) {
       ))
     }
     
-    site_year_choices <- site_df %>%
-      filter(!is.na(`OBSERVATION DATE`)) %>%
-      mutate(year = as.integer(strftime(as.Date(`OBSERVATION DATE`), "%Y"))) %>%
-      distinct(year) %>%
-      arrange(desc(year)) %>%
-      pull(year) %>%
-      as.character()
-    
-    if (length(site_year_choices) == 0) {
-      return(list(
-        mode = "none",
-        choices = character(0),
-        selected = "__none__"
-      ))
-    }
-    
-    target_year <- if (!is.null(input$selected_year) && input$selected_year != "") {
-      input$selected_year
-    } else {
-      last_selected_year()
-    }
-    
-    if (is.null(target_year) || target_year == "") {
+    if (is.null(input$start_year) || is.null(input$end_year) ||
+        input$start_year == "" || input$end_year == "") {
       return(list(
         mode = "select",
         choices = character(0),
@@ -905,7 +812,10 @@ server <- function(input, output, session) {
       ))
     }
     
-    if (!(target_year %in% site_year_choices)) {
+    start_year <- as.integer(input$start_year)
+    end_year <- as.integer(input$end_year)
+    
+    if (is.na(start_year) || is.na(end_year) || start_year > end_year) {
       return(list(
         mode = "none",
         choices = character(0),
@@ -913,15 +823,19 @@ server <- function(input, output, session) {
       ))
     }
     
-    df_year <- site_df %>%
-      mutate(year = strftime(as.Date(`OBSERVATION DATE`), "%Y")) %>%
-      filter(year == target_year)
+    df_range <- site_df %>%
+      mutate(year = as.integer(strftime(as.Date(`OBSERVATION DATE`), "%Y"))) %>%
+      filter(year >= start_year, year <= end_year)
     
-    species_choices <- df_year %>%
+    species_choices <- df_range %>%
       filter(!is.na(`COMMON NAME`), `COMMON NAME` != "") %>%
       distinct(`COMMON NAME`) %>%
       arrange(`COMMON NAME`) %>%
       pull(`COMMON NAME`)
+    
+    if (isTRUE(input$sgcn_only)) {
+      species_choices <- species_choices[species_choices %in% sgcn_species]
+    }
     
     if (length(species_choices) == 0) {
       return(list(
@@ -932,21 +846,10 @@ server <- function(input, output, session) {
     }
     
     target_species <- if (!is.null(input$selected_species) &&
-                          input$selected_species != "" &&
                           input$selected_species != "__none__") {
       input$selected_species
     } else {
-      last_selected_species()
-    }
-    
-    if (!is.null(target_species) &&
-        target_species != "" &&
-        !(target_species %in% species_choices)) {
-      return(list(
-        mode = "none",
-        choices = character(0),
-        selected = "__none__"
-      ))
+      ""
     }
     
     selected_species <- if (!is.null(target_species) &&
@@ -985,8 +888,10 @@ server <- function(input, output, session) {
           NULL,
           choices = c("Select Species" = ""),
           selected = "",
+          multiple = FALSE,
           options = list(
-            placeholder = "Select Species"
+            placeholder = "Type to search species",
+            allowEmptyOption = TRUE
           )
         )
       )
@@ -997,8 +902,10 @@ server <- function(input, output, session) {
       NULL,
       choices = c("Select Species" = "", st$choices),
       selected = st$selected,
+      multiple = FALSE,
       options = list(
-        placeholder = "Select Species"
+        placeholder = "Type to search species",
+        allowEmptyOption = TRUE
       )
     )
   })
@@ -1006,7 +913,7 @@ server <- function(input, output, session) {
   filtered_data <- reactive({
     req(input$site)
     req(input$site != "")
-    req(input$year_min, input$year_max)
+    req(input$start_year, input$end_year)
     
     df <- current_cache()
     
@@ -1014,8 +921,8 @@ server <- function(input, output, session) {
       return(df)
     }
     
-    start_year <- as.integer(input$year_min)
-    end_year <- as.integer(input$year_max)
+    start_year <- as.integer(input$start_year)
+    end_year <- as.integer(input$end_year)
     
     if (is.na(start_year) || is.na(end_year)) {
       return(df[0, , drop = FALSE])
@@ -1039,34 +946,36 @@ server <- function(input, output, session) {
   year_filtered_data <- reactive({
     req(input$site)
     req(input$site != "")
-    req(input$selected_year)
+    req(input$start_year, input$end_year)
     
     df <- current_cache()
-    
-    if (input$selected_year == "" || input$selected_year == "__none__") {
-      return(df[0, , drop = FALSE])
-    }
     
     if (nrow(df) == 0) {
       return(df[0, , drop = FALSE])
     }
     
+    start_year <- as.integer(input$start_year)
+    end_year <- as.integer(input$end_year)
+    
+    if (is.na(start_year) || is.na(end_year) || start_year > end_year) {
+      return(df[0, , drop = FALSE])
+    }
+    
     df %>%
-      mutate(year = strftime(as.Date(`OBSERVATION DATE`), "%Y")) %>%
-      filter(year == input$selected_year)
+      mutate(year = as.integer(strftime(as.Date(`OBSERVATION DATE`), "%Y"))) %>%
+      filter(year >= start_year, year <= end_year)
   })
   
   species_filtered_data <- reactive({
     req(input$site)
     req(input$site != "")
-    req(input$selected_year)
+    req(input$start_year)
+    req(input$end_year)
     req(input$selected_species)
     
     df <- year_filtered_data()
     
-    if (input$selected_year == "" ||
-        input$selected_year == "__none__" ||
-        input$selected_species == "" ||
+    if (input$selected_species == "" ||
         input$selected_species == "__none__" ||
         nrow(df) == 0) {
       return(df[0, , drop = FALSE])
@@ -1155,7 +1064,7 @@ server <- function(input, output, session) {
   annual_counts <- reactive({
     req(input$site)
     req(input$site != "")
-    req(input$year_min, input$year_max)
+    req(input$start_year, input$end_year)
     
     df <- filtered_data()
     
@@ -1177,8 +1086,8 @@ server <- function(input, output, session) {
       count(year, name = "checklists") %>%
       arrange(year)
     
-    start_year <- as.integer(input$year_min)
-    end_year <- as.integer(input$year_max)
+    start_year <- as.integer(input$start_year)
+    end_year <- as.integer(input$end_year)
     
     all_years <- data.frame(year = seq(start_year, end_year))
     
@@ -1190,11 +1099,12 @@ server <- function(input, output, session) {
   annual_checklist_total <- reactive({
     req(input$site)
     req(input$site != "")
-    req(input$selected_year)
+    req(input$start_year)
+    req(input$end_year)
     
     df <- year_filtered_data()
     
-    if (input$selected_year == "" || input$selected_year == "__none__" || nrow(df) == 0) {
+    if (nrow(df) == 0) {
       return(0)
     }
     
@@ -1219,19 +1129,6 @@ server <- function(input, output, session) {
     )
   })
   
-  output$summary_text <- renderText({
-    if (is.null(input$site) || input$site == "" ||
-        is.null(input$selected_year) || input$selected_year == "" ||
-        input$selected_year == "__none__") {
-      return("Checklists:")
-    }
-    
-    paste0(
-      "Checklists in ", input$selected_year, ": ",
-      format(annual_checklist_total(), big.mark = ",")
-    )
-  })
-  
   output$species_summary_text <- renderText({
     if (is.null(input$site) || input$site == "" ||
         is.null(input$selected_species) || input$selected_species == "" ||
@@ -1248,8 +1145,7 @@ server <- function(input, output, session) {
   })
   
   output$annual_plot <- renderPlot(
-    width = 1000,
-    height = 250,
+    height = 450,
     res = 96,
     {
       if (is.null(input$site) || input$site == "") {
@@ -1264,152 +1160,16 @@ server <- function(input, output, session) {
     }
   )
   
-  output$download_report <- downloadHandler(
-    filename = function() {
-      site_part <- if (is.null(input$site) || input$site == "") {
-        "wma"
-      } else {
-        sanitize_filename(current_site_name())
-      }
-      
-      year_part <- if (is.null(input$selected_year) || input$selected_year == "") {
-        "no_year"
-      } else {
-        input$selected_year
-      }
-      
-      species_part <- if (!is.null(input$selected_species) &&
-                          input$selected_species != "" &&
-                          input$selected_species != "__none__") {
-        sanitize_filename(input$selected_species)
-      } else {
-        "all_species"
-      }
-      
-      map_part <- if (!is.null(input$map_type) && input$map_type == "heat") {
-        paste0("heat_", input$heat_metric)
-      } else {
-        "points"
-      }
-      
-      paste0(site_part, "_", year_part, "_", species_part, "_", map_part, "_report.pdf")
-    },
-    
-    content = function(file) {
-      req(input$site)
-      req(input$site != "")
-      req(input$selected_year)
-      req(input$selected_year != "")
-      req(input$selected_year != "__none__")
-      
-      if (!file.exists(report_template_file)) {
-        stop("Could not find report template: ", normalizePath(report_template_file, mustWork = FALSE))
-      }
-      
-      tmp_dir <- tempdir()
-      report_rmd <- file.path(tmp_dir, "report_template.Rmd")
-      report_pdf <- file.path(tmp_dir, "report_output.pdf")
-      map_png <- file.path(tmp_dir, "report_map.png")
-      annual_png <- file.path(tmp_dir, "annual_plot.png")
-      
-      file.copy(report_template_file, report_rmd, overwrite = TRUE)
-      
-      site_name_val <- current_site_name()
-      selected_year_val <- input$selected_year
-      selected_species_val <- if (is.null(input$selected_species)) "" else input$selected_species
-      checklist_total_val <- annual_checklist_total()
-      species_summary_val <- species_summary()
-      annual_counts_val <- annual_counts()
-      poly_val <- current_polygon()
-      report_date_val <- format(Sys.time(), "%Y-%m-%d %H:%M")
-      
-      report_map_type <- input$map_type
-      report_heat_metric <- input$heat_metric
-      report_heat_settings <- heat_settings()
-      
-      report_point_data <- NULL
-      report_heat_data <- NULL
-      
-      if (report_map_type == "points") {
-        if (!is.null(input$selected_species) &&
-            input$selected_species != "" &&
-            input$selected_species != "__none__") {
-          report_point_data <- species_checklist_points() %>%
-            filter(!is.na(LATITUDE), !is.na(LONGITUDE))
-        } else {
-          report_point_data <- tibble(
-            LONGITUDE = numeric(),
-            LATITUDE = numeric()
-          )
-        }
-      } else {
-        if (report_heat_metric == "all_checklists") {
-          report_heat_data <- all_checklist_points() %>%
-            filter(!is.na(LATITUDE), !is.na(LONGITUDE))
-        } else if (!is.null(input$selected_species) &&
-                   input$selected_species != "" &&
-                   input$selected_species != "__none__") {
-          df_points <- species_checklist_points() %>%
-            filter(!is.na(LATITUDE), !is.na(LONGITUDE))
-          
-          if (report_heat_metric == "species_density") {
-            report_heat_data <- df_points %>%
-              mutate(heat_intensity = 1)
-          } else {
-            report_heat_data <- df_points %>%
-              mutate(
-                heat_intensity = ifelse(
-                  is.na(individuals_num) | individuals_num <= 0,
-                  1,
-                  pmax(1.5, sqrt(individuals_num) * 3.5)
-                )
-              )
-          }
-        } else {
-          report_heat_data <- tibble(
-            LONGITUDE = numeric(),
-            LATITUDE = numeric(),
-            heat_intensity = numeric()
-          )
-        }
-      }
-      
-      save_annual_plot_png(
-        df = annual_counts_val,
-        file = annual_png
-      )
-      
-      rendered_file <- rmarkdown::render(
-        input = report_rmd,
-        output_file = report_pdf,
-        params = list(
-          site_name = site_name_val,
-          selected_year = selected_year_val,
-          selected_species = selected_species_val,
-          checklist_total = checklist_total_val,
-          species_individuals = species_summary_val$individuals,
-          species_checklists = species_summary_val$checklists,
-          annual_plot_path = annual_png,
-          map_path = "",
-          report_date = report_date_val,
-          heat_metric = if (is.null(input$heat_metric)) "" else input$heat_metric
-        ),
-        envir = new.env(parent = globalenv()),
-        quiet = TRUE
-      )
-      
-      if (!file.exists(rendered_file)) {
-        stop("PDF was not created.")
-      }
-      
-      file.copy(rendered_file, file, overwrite = TRUE)
-    }
-  )
-  
   output$map <- renderLeaflet({
-    leaflet(options = leafletOptions(preferCanvas = TRUE)) %>%
+    leaflet(
+      options = leafletOptions(
+        preferCanvas = TRUE,
+        zoomSnap = 0,
+        zoomDelta = 1
+      )
+    ) %>%
       addProviderTiles(leaflet::providers$CartoDB.Positron) %>%
-      setView(lng = -78.5, lat = 37.5, zoom = 7)
+      setView(lng = -79.5, lat = 37.8, zoom = 6.7)
   })
   
   observe({
@@ -1420,7 +1180,7 @@ server <- function(input, output, session) {
         clearMarkerClusters() %>%
         clearPopups() %>%
         clearHeatmap() %>%
-        setView(lng = -78.5, lat = 37.5, zoom = 7)
+        setView(lng = -79.5, lat = 37.8, zoom = 6.7)
       return()
     }
     
@@ -1449,8 +1209,8 @@ server <- function(input, output, session) {
   
   observe({
     if (is.null(input$site) || input$site == "" ||
-        is.null(input$selected_year) || input$selected_year == "" ||
-        input$selected_year == "__none__") {
+        is.null(input$start_year) || input$start_year == "" ||
+        is.null(input$end_year) || input$end_year == "") {
       
       leafletProxy("map") %>%
         clearMarkers() %>%
