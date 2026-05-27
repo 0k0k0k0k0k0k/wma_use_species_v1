@@ -1,0 +1,23 @@
+WMA deploy_app inventory
+Built: 2026-05-27 16:17:44 EDT
+Source project root: /Users/lisamease/Projects/Shiny App Folder/WMA_App_2026_v1
+
+Files/folders copied:
+  app.R
+  data_processed/app_ready_data.rds
+  data_raw/shapefiles/county_boundaries/va_counties.cpg
+  data_raw/shapefiles/county_boundaries/va_counties.dbf
+  data_raw/shapefiles/county_boundaries/va_counties.prj
+  data_raw/shapefiles/county_boundaries/va_counties.sbn
+  data_raw/shapefiles/county_boundaries/va_counties.sbx
+  data_raw/shapefiles/county_boundaries/va_counties.shp
+  data_raw/shapefiles/county_boundaries/va_counties.shp.xml
+  data_raw/shapefiles/county_boundaries/va_counties.shx
+  data_raw/species_list2.csv
+
+Missing referenced paths from app.R:
+  None detected.
+
+Notes:
+  This script does not run git add, git commit, git pull, or git push.
+  Review deploy_app before publishing or copying into a clean GitHub push folder.
